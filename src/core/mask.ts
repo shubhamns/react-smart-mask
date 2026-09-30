@@ -3,6 +3,7 @@ export type TokenPattern = RegExp;
 export type TokenMap = Partial<Record<MaskToken, TokenPattern>>;
 export interface MaskOptions {
   tokens?: TokenMap;
+  maskChar?: string | null;
 }
 export interface MaskResult {
   value: string;
@@ -88,11 +89,104 @@ export function applyMask(input: string, mask: string, options: MaskOptions = {}
   }
   return { value, rawValue, isComplete: mask.length === 0 ? true : complete };
 }
+export function rawFromDisplay(display: string, mask: string, options: MaskOptions = {}): string {
+  const tokens = { ...DEFAULT_TOKENS, ...options.tokens };
+  const maskChar = options.maskChar;
+  const parts = parseMask(mask);
+  let pos = 0;
+  let raw = '';
+  for (const part of parts) {
+    if (part.kind === 'literal') {
+      const lit = part.value;
+      if (!display.startsWith(lit, pos)) return raw;
+      pos += lit.length;
+      continue;
+    }
+    if (pos >= display.length) break;
+    const ch = display[pos];
+    if (maskChar && ch === maskChar) break;
+    if (!matches(tokens[part.token], ch)) break;
+    raw += ch;
+    pos++;
+  }
+  return raw;
+}
 export function unmask(value: string, mask: string, options: MaskOptions = {}): string {
+  const prefix = leadingLiteralPrefix(mask);
+  if (prefix && value.startsWith(prefix)) return rawFromDisplay(value, mask, options);
   return applyMask(value, mask, options).rawValue;
 }
 export function maskValue(rawValue: string, mask: string, options: MaskOptions = {}): string {
   return applyMask(rawValue, mask, options).value;
+}
+export function maskDisplayWithChar(
+  rawValue: string,
+  mask: string,
+  maskChar: string,
+  options: MaskOptions = {},
+): string {
+  const tokens = { ...DEFAULT_TOKENS, ...options.tokens };
+  const parts = parseMask(mask);
+  let rawi = 0;
+  const raw = Array.from(rawValue);
+  let result = '';
+  for (const part of parts) {
+    if (part.kind === 'literal') {
+      result += part.value;
+      continue;
+    }
+    if (rawi < raw.length && matches(tokens[part.token], raw[rawi])) {
+      result += raw[rawi++];
+    } else {
+      result += maskChar;
+    }
+  }
+  return result;
+}
+export function leadingLiteralPrefix(mask: string): string {
+  const parts = parseMask(mask);
+  let prefix = '';
+  for (const part of parts) {
+    if (part.kind === 'token') break;
+    prefix += part.value;
+  }
+  return prefix;
+}
+export function isMaskTemplateActive(
+  raw: string,
+  mask: string,
+  options: MaskOptions = {},
+  focused: boolean,
+  showMaskOnFocus = true,
+): boolean {
+  if (!focused || !showMaskOnFocus || applyMask(raw, mask, options).isComplete) return false;
+  const maskChar = options.maskChar;
+  if (maskChar != null && maskChar !== '') return true;
+  return raw === '' && leadingLiteralPrefix(mask).length > 0;
+}
+export function resolveInputDisplay(
+  raw: string,
+  mask: string,
+  options: MaskOptions = {},
+  templateActive: boolean,
+): string {
+  const maskChar = options.maskChar;
+  if (templateActive && maskChar != null && maskChar !== '') return maskDisplayWithChar(raw, mask, maskChar, options);
+  if (templateActive && raw === '') return leadingLiteralPrefix(mask);
+  return maskValue(raw, mask, options);
+}
+export function focusCaretForMask(
+  raw: string,
+  mask: string,
+  options: MaskOptions = {},
+  showMaskOnFocus = true,
+): number {
+  if (!showMaskOnFocus || applyMask(raw, mask, options).isComplete) return 0;
+  const active = isMaskTemplateActive(raw, mask, options, true, showMaskOnFocus);
+  const display = resolveInputDisplay(raw, mask, options, active);
+  if (options.maskChar != null && options.maskChar !== '') return firstEmptySlot(display, mask, options);
+  if (raw === '' && leadingLiteralPrefix(mask)) return firstEditable(display, mask, options);
+  return firstEmptySlot(display, mask, options);
 }
 export function getEditablePositions(mask: string): number[] {
   const result: number[] = [];
@@ -126,6 +220,8 @@ export function displayCaretToRawIndex(
     }
     if (caret <= pos) return raw;
     const ch = display[pos];
+    const maskChar = options.maskChar;
+    if (maskChar && ch === maskChar) return raw;
     if (ch && matches(tokens[part.token], ch)) {
       raw++;
       pos++;
@@ -135,10 +231,21 @@ export function displayCaretToRawIndex(
   }
   return raw;
 }
-export function rawIndexToDisplayCaret(rawIndex: number, raw: string, mask: string, options: MaskOptions = {}): number {
-  const { value } = applyMask(raw, mask, options);
-  if (rawIndex <= 0) return 0;
-  if (rawIndex >= raw.length) return value.length;
+export function rawIndexToDisplayCaret(
+  rawIndex: number,
+  raw: string,
+  mask: string,
+  options: MaskOptions = {},
+  displayValue?: string,
+): number {
+  const { value: masked } = applyMask(raw, mask, options);
+  const value = displayValue ?? masked;
+  const maskChar = options.maskChar;
+  if (rawIndex <= 0) return firstEditable(value, mask, options);
+  if (rawIndex >= raw.length) {
+    if (maskChar && displayValue) return firstEmptySlot(displayValue, mask, options);
+    return value.length;
+  }
   const tokens = { ...DEFAULT_TOKENS, ...options.tokens };
   const parts = parseMask(mask);
   let ri = 0,
@@ -152,6 +259,10 @@ export function rawIndexToDisplayCaret(rawIndex: number, raw: string, mask: stri
       continue;
     }
     const ch = value[pos];
+    if (maskChar && ch === maskChar) {
+      if (ri === rawIndex) return pos;
+      return pos;
+    }
     if (!ch) break;
     if (matches(tokens[part.token], ch)) {
       ri++;
@@ -189,6 +300,8 @@ export function isEditableDisplayIndex(
     }
     if (index === pos) return true;
     const ch = display[pos];
+    const maskChar = options.maskChar;
+    if (maskChar && ch === maskChar) return index === pos;
     if (!ch) return index === pos;
     if (matches(tokens[part.token], ch)) {
       pos++;
@@ -201,6 +314,23 @@ export function isEditableDisplayIndex(
 export function firstEditable(display: string, mask: string, options: MaskOptions = {}): number {
   for (let i = 0; i <= display.length; i++) if (isEditableDisplayIndex(i, display, mask, options)) return i;
   return 0;
+}
+export function firstEmptySlot(display: string, mask: string, options: MaskOptions = {}): number {
+  const maskChar = options.maskChar;
+  const tokens = { ...DEFAULT_TOKENS, ...options.tokens };
+  const parts = parseMask(mask);
+  let pos = 0;
+  for (const part of parts) {
+    if (part.kind === 'literal') {
+      pos += part.value.length;
+      continue;
+    }
+    const ch = display[pos];
+    if (ch === undefined || (maskChar && ch === maskChar)) return pos;
+    if (!matches(tokens[part.token], ch)) return pos;
+    pos++;
+  }
+  return display.length;
 }
 export function lastEditable(display: string, mask: string, options: MaskOptions = {}): number {
   for (let i = display.length; i >= 0; i--) if (isEditableDisplayIndex(i, display, mask, options)) return i;

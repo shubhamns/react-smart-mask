@@ -16,7 +16,6 @@ Phone, date, and PIN-style masks with formatted display, raw value, and completi
 - Arrow/Home/End navigation that skips mask literals
 - IME/composition-safe updates
 - SSR/Next.js friendly (no `window` during render)
-- `useMask()` hook
 - Custom token patterns
 - Accessibility-friendly (passes through ARIA/input props)
 
@@ -64,16 +63,15 @@ The `value` prop accepts raw user characters (unmasked):
 />
 ```
 
-## `useMask()`
+## Focus template (`maskChar`)
+
+Show placeholders on focus (for example `__/__/____`):
 
 ```tsx
-import { MaskInput, useMask } from 'react-smart-mask';
-
-function PhoneField() {
-  const mask = useMask({ mask: '{+91 }99999 99999' });
-  return <MaskInput aria-label="Phone" {...mask.inputProps} />;
-}
+<MaskInput mask="99/99/9999" maskChar="_" placeholder="Birthdate" />
 ```
+
+Prefix literals (for example `{+91 }`) appear on focus when the field is empty.
 
 ## Utilities
 

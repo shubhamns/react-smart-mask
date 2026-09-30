@@ -1,5 +1,4 @@
 export { MaskInput } from './components/MaskInput';
-export { useMask } from './hooks/useMask';
 export {
   applyMask,
   maskValue,
@@ -17,4 +16,3 @@ export {
 } from './core/mask';
 export type { MaskOptions, MaskResult, MaskToken, TokenMap, MaskPart } from './core/mask';
 export type { MaskInputProps, MaskMeta } from './types';
-export type { UseMaskOptions } from './hooks/useMask';

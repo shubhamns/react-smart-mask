@@ -2,11 +2,15 @@ import type { ChangeEvent, ClipboardEvent, CompositionEvent, FormEvent, Keyboard
 import {
   applyMask,
   deleteRawRange,
+  rawFromDisplay,
   displayCaretToRawIndex,
   firstEditable,
   insertRaw,
   lastEditable,
+  isMaskTemplateActive,
+  leadingLiteralPrefix,
   rawIndexToDisplayCaret,
+  resolveInputDisplay,
   skipEditable,
   type MaskOptions,
 } from './mask';
@@ -16,19 +20,34 @@ export type MaskInputCore = {
   maskOptions?: MaskOptions;
   raw: string;
   display: string;
+  templateActive: boolean;
   composing: boolean;
   input: HTMLInputElement | null;
   caretRef: CaretRef;
+  committedRawRef: { current: string };
+  focused: boolean;
+  showMaskOnFocus: boolean;
   setRaw: (raw: string) => void;
   emit: (raw: string, event?: FormEvent<HTMLInputElement>) => void;
 };
-export function setCaret(core: MaskInputCore, start: number, end = start) {
+function nextDisplayForRaw(core: MaskInputCore, raw: string) {
+  const active = isMaskTemplateActive(raw, core.mask, core.maskOptions ?? {}, core.focused, core.showMaskOnFocus);
+  return resolveInputDisplay(raw, core.mask, core.maskOptions, active);
+}
+function expectedDisplayForCommitted(core: MaskInputCore) {
+  return nextDisplayForRaw(core, core.committedRawRef.current);
+}
+export function moveCaret(core: MaskInputCore, start: number, end = start) {
   core.caretRef.current = [start, end];
   core.input?.setSelectionRange(start, end);
 }
+export function queueCaret(core: MaskInputCore, start: number, end = start) {
+  core.caretRef.current = [start, end];
+}
 export function commitRaw(core: MaskInputCore, nextRaw: string, caretRaw: number, event?: FormEvent<HTMLInputElement>) {
-  core.setRaw(nextRaw);
-  setCaret(core, rawIndexToDisplayCaret(caretRaw, nextRaw, core.mask, core.maskOptions));
+  core.committedRawRef.current = nextRaw;
+  const nextDisplay = nextDisplayForRaw(core, nextRaw);
+  queueCaret(core, rawIndexToDisplayCaret(caretRaw, nextRaw, core.mask, core.maskOptions, nextDisplay));
   core.emit(nextRaw, event);
 }
 export function handleCompositionStart(core: MaskInputCore) {
@@ -81,11 +100,16 @@ export function handleBeforeInput(core: MaskInputCore, e: FormEvent<HTMLInputEle
 export function handleChange(core: MaskInputCore, e: ChangeEvent<HTMLInputElement>) {
   if (core.composing) return;
   const nextDisplay = e.target.value;
-  const r = applyMask(nextDisplay, core.mask, core.maskOptions);
+  if (nextDisplay === expectedDisplayForCommitted(core)) return;
+  const prefix = leadingLiteralPrefix(core.mask);
+  const nextRaw =
+    prefix && nextDisplay.startsWith(prefix)
+      ? rawFromDisplay(nextDisplay, core.mask, core.maskOptions)
+      : applyMask(nextDisplay, core.mask, core.maskOptions).rawValue;
   const el = core.input;
-  const caret = el?.selectionStart ?? r.value.length;
+  const caret = el?.selectionStart ?? nextDisplay.length;
   const rawCaret = displayCaretToRawIndex(caret, nextDisplay, core.mask, core.maskOptions);
-  commitRaw(core, r.rawValue, rawCaret, e);
+  commitRaw(core, nextRaw, rawCaret, e);
 }
 export function handleKeyDown(core: MaskInputCore, e: KeyboardEvent<HTMLInputElement>) {
   if (core.composing || !core.input) return;
@@ -97,7 +121,7 @@ export function handleKeyDown(core: MaskInputCore, e: KeyboardEvent<HTMLInputEle
     const next = skipEditable(display, core.mask, start, -1, core.maskOptions);
     if (next !== start) {
       e.preventDefault();
-      setCaret(core, next, next);
+      moveCaret(core, next, next);
     }
     return;
   }
@@ -105,20 +129,20 @@ export function handleKeyDown(core: MaskInputCore, e: KeyboardEvent<HTMLInputEle
     const next = skipEditable(display, core.mask, start, 1, core.maskOptions);
     if (next !== start) {
       e.preventDefault();
-      setCaret(core, next, next);
+      moveCaret(core, next, next);
     }
     return;
   }
   if (e.key === 'Home') {
     e.preventDefault();
     const first = firstEditable(display, core.mask, core.maskOptions);
-    setCaret(core, first, first);
+    moveCaret(core, first, first);
     return;
   }
   if (e.key === 'End') {
     e.preventDefault();
     const last = lastEditable(display, core.mask, core.maskOptions);
-    setCaret(core, last, last);
+    moveCaret(core, last, last);
     return;
   }
   if (e.key === 'Backspace' || e.key === 'Delete') {

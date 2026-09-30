@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { createRef, useState } from 'react';
-import { MaskInput, useMask } from '../src';
+import { createRef } from 'react';
+import { MaskInput } from '../src';
 
 function setSelection(el: HTMLInputElement, start: number, end = start) {
   el.setSelectionRange(start, end);
@@ -9,6 +9,26 @@ function setSelection(el: HTMLInputElement, start: number, end = start) {
 }
 
 describe('MaskInput', () => {
+  it('shows prefix literals on focus and places caret after them', () => {
+    render(<MaskInput aria-label="phone" mask="{+91 }99999 99999" placeholder="XXXXX XXXXX" />);
+    const input = screen.getByLabelText('phone') as HTMLInputElement;
+    expect(input).toHaveValue('');
+    fireEvent.focus(input);
+    expect(input).toHaveValue('+91 ');
+    expect(input.selectionStart).toBe('+91 '.length);
+    fireEvent.blur(input);
+    expect(input).toHaveValue('');
+  });
+  it('shows maskChar template on focus', () => {
+    render(<MaskInput aria-label="date" mask="99/99/9999" maskChar="_" />);
+    const input = screen.getByLabelText('date') as HTMLInputElement;
+    expect(input).toHaveValue('');
+    fireEvent.focus(input);
+    expect(input).toHaveValue('__/__/____');
+    expect(input.selectionStart).toBe(0);
+    fireEvent.blur(input);
+    expect(input).toHaveValue('');
+  });
   it('formats user input', () => {
     render(<MaskInput aria-label="phone" mask="99999 99999" />);
     const input = screen.getByLabelText('phone') as HTMLInputElement;
@@ -91,28 +111,6 @@ describe('MaskInput', () => {
   it('sets numeric inputMode for digit masks', () => {
     render(<MaskInput aria-label="pin" mask="9999" />);
     expect(screen.getByLabelText('pin')).toHaveAttribute('inputmode', 'numeric');
-  });
-});
-
-describe('useMask', () => {
-  it('returns formatted value and meta', () => {
-    function Demo() {
-      const m = useMask({ mask: '9999', defaultValue: '12' });
-      return <span data-testid="v">{m.value}</span>;
-    }
-    render(<Demo />);
-    expect(screen.getByTestId('v')).toHaveTextContent('12');
-  });
-  it('updates in controlled wrapper', () => {
-    function Demo() {
-      const [v, setV] = useState('');
-      const m = useMask({ mask: '9999', value: v, onChange: (val) => setV(val.replace(/\D/g, '')) });
-      return <MaskInput aria-label="c" {...m.inputProps} />;
-    }
-    render(<Demo />);
-    const input = screen.getByLabelText('c') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '1234' } });
-    expect(input).toHaveValue('1234');
   });
 });
 
