@@ -24,17 +24,34 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest
       - run: npm ci
-      - name: Skip if version already on npm
-        id: check
+      - name: Publish gate
+        id: gate
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if npm view "react-smart-mask@${VERSION}" version >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "react-smart-mask@${VERSION} is already on npm; skipping publish."
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/v}"
+            if [ "$TAG" != "$VERSION" ]; then
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              echo "Skip: tag v${TAG} does not match package.json ${VERSION}. Bump package.json manually, then tag v${VERSION}."
+              exit 0
+            fi
           fi
+          if npm view "react-smart-mask@${VERSION}" version >/dev/null 2>&1; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "Skip: react-smart-mask@${VERSION} is already on npm."
+            exit 0
+          fi
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
       - name: Publish to npm
-        if: steps.check.outputs.published != 'true'
-        run: npm publish --provenance --access public
+        if: steps.gate.outputs.should_publish == 'true'
+        run: |
+          set +e
+          npm publish --provenance --access public 2>&1 | tee publish.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -eq 0 ]; then exit 0; fi
+          if grep -qE 'E409|previously staged|Validating' publish.log; then
+            echo "Skip: this version is already staged or validating on npm."
+            exit 0
+          fi
+          exit "$code"
