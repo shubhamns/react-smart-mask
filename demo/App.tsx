@@ -2,16 +2,26 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { MaskInput, type MaskMeta } from '../src';
 const page: CSSProperties = {
   margin: 0,
-  minHeight: '100vh',
   fontFamily: 'system-ui,sans-serif',
   background: '#0f172a',
   padding: 24,
 };
-const card: CSSProperties = { maxWidth: 480, margin: '0 auto', background: '#fff', borderRadius: 12, padding: 24 };
+const card: CSSProperties = {
+  width: '100%',
+  maxWidth: 480,
+  margin: '0 auto',
+  background: '#fff',
+  borderRadius: 12,
+  padding: 24,
+  boxSizing: 'border-box',
+};
 const field: CSSProperties = { marginBottom: 16 };
 const label: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 };
 const input: CSSProperties = {
+  display: 'block',
   width: '100%',
+  maxWidth: '100%',
+  boxSizing: 'border-box',
   fontSize: 16,
   padding: '10px 12px',
   border: '1px solid #cbd5e1',

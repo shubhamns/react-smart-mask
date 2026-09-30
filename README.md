@@ -2,7 +2,7 @@
 
 Lightweight, TypeScript-first input masking for React 18 and React 19.
 
-![react-smart-mask demo](./docs/readme-preview.png)
+<img src="./docs/readme-preview.png" alt="react-smart-mask demo" width="480" height="358" />
 
 Phone, date, and PIN-style masks with formatted display, raw value, and completion state from `onChange` metadata.
 
